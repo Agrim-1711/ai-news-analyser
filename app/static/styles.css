@@ -1,0 +1,276 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    --background: #f7f8fa;
+    --surface: #ffffff;
+    --text: #172033;
+    --muted: #667085;
+    --border: #e4e7ec;
+    --primary: #3157d5;
+    --primary-hover: #2546b5;
+
+    --positive-bg: #e8f7ee;
+    --positive-text: #16794a;
+
+    --neutral-bg: #eef2f6;
+    --neutral-text: #475467;
+
+    --negative-bg: #fcebea;
+    --negative-text: #b42318;
+
+    --radius: 12px;
+}
+
+body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    line-height: 1.5;
+}
+
+.container {
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto;
+}
+
+header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 42px 0 34px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 2rem;
+    letter-spacing: -0.04em;
+}
+
+header p {
+    margin: 7px 0 0;
+    color: var(--muted);
+}
+
+main {
+    padding: 40px 0 70px;
+}
+
+section + section {
+    margin-top: 64px;
+}
+
+h2 {
+    margin: 0 0 20px;
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+}
+
+#search-form {
+    display: flex;
+    gap: 10px;
+    max-width: 720px;
+    margin-bottom: 24px;
+}
+
+#search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 15px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    outline: none;
+}
+
+#search-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(49, 87, 213, 0.1);
+}
+
+button {
+    border: 0;
+    border-radius: 9px;
+    padding: 11px 18px;
+    background: var(--primary);
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        transform 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+button:disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.card {
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
+}
+
+.card > img {
+    display: block;
+    width: 100%;
+    height: 210px;
+    object-fit: cover;
+    background: #eef0f3;
+}
+
+.card-content {
+    padding: 20px;
+}
+
+.metadata {
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.card h3 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    line-height: 1.4;
+}
+
+.card p {
+    margin: 0;
+    color: #475467;
+    font-size: 0.94rem;
+}
+
+.card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 20px;
+}
+
+a {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.card-actions a {
+    font-size: 0.9rem;
+}
+
+.analysis {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #fafbfc;
+}
+
+.analysis h4 {
+    margin: 12px 0 5px;
+    font-size: 0.9rem;
+}
+
+.analysis p {
+    color: var(--text);
+}
+
+.sentiment {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.sentiment.positive {
+    background: var(--positive-bg);
+    color: var(--positive-text);
+}
+
+.sentiment.neutral {
+    background: var(--neutral-bg);
+    color: var(--neutral-text);
+}
+
+.sentiment.negative {
+    background: var(--negative-bg);
+    color: var(--negative-text);
+}
+
+.analysis-history-card {
+    border-left: 3px solid var(--primary);
+}
+
+.analysis-history-card .sentiment {
+    margin: 2px 0 13px;
+}
+
+.analysis-history-card p {
+    margin-bottom: 16px;
+}
+
+.status {
+    color: var(--muted);
+}
+
+.error {
+    color: var(--negative-text);
+}
+
+@media (max-width: 760px) {
+    .container {
+        width: min(100% - 28px, 1120px);
+    }
+
+    header {
+        padding: 30px 0 26px;
+    }
+
+    main {
+        padding-top: 30px;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    #search-form {
+        flex-direction: column;
+    }
+
+    #search-form button {
+        width: 100%;
+    }
+}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NewsAnalyser</title>
+
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <h1>NewsAnalyser</h1>
+            <p>Search recent news and analyse it with AI.</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <section>
+            <h2>Search news</h2>
+
+            <form id="search-form">
+                <input
+                    id="search-input"
+                    type="search"
+                    placeholder="Search for a topic..."
+                    required
+                >
+                <button type="submit">Search</button>
+            </form>
+
+            <p id="search-status" class="status"></p>
+
+            <div id="search-results" class="grid"></div>
+        </section>
+
+        <section>
+            <h2>Previous analyses</h2>
+
+            <div id="analysis-history" class="grid"></div>
+        </section>
+
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

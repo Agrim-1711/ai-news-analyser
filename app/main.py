@@ -1,8 +1,108 @@
-from fastapi import FastAPI
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Query
+from openai import OpenAIError
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.database import Base, engine, get_db
+from app.models import Analysis
+from app.schemas import ArticleInput
+from app.services.ai import analyse_article
+from app.services.news import search_articles
+
+from fastapi.requests import Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="NewsAnalyser")
 
 
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+templates = Jinja2Templates(directory="app/templates")
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/articles")
+async def get_articles(
+    q: str = Query(..., min_length=1, description="News search query")
+):
+    try:
+        articles = await search_articles(q)
+        return {"articles": articles}
+
+    except httpx.HTTPStatusError:
+        raise HTTPException(
+            status_code=502,
+            detail="News provider returned an error",
+        )
+
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to reach news provider",
+        )
+
+
+@app.post("/api/analyses")
+async def create_analysis(
+    article: ArticleInput,
+    db: Session = Depends(get_db),
+):
+    try:
+        ai_analysis = await analyse_article(article)
+
+        analysis = Analysis(
+            title=article.title,
+            description=article.description,
+            url=str(article.url),
+            source=article.source,
+            published_at=article.published_at,
+            summary=ai_analysis.summary,
+            sentiment=ai_analysis.sentiment,
+        )
+
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+        return analysis
+
+    except OpenAIError as e:
+        print(f"OpenAI error: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="AI analysis failed",
+        )
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        print(f"Database error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save analysis",
+        )
+
+
+@app.get("/api/analyses")
+def get_analyses(db: Session = Depends(get_db)):
+    return (
+        db.query(Analysis)
+        .order_by(Analysis.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request},
+    )
