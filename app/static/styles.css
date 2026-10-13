@@ -72,14 +72,14 @@ h2 {
     letter-spacing: -0.02em;
 }
 
-#search-form {
+#search-form, #research-form {
     display: flex;
     gap: 10px;
     max-width: 720px;
     margin-bottom: 24px;
 }
 
-#search-input {
+#search-input, #research-input {
     flex: 1;
     min-width: 0;
     padding: 12px 15px;
@@ -91,7 +91,7 @@ h2 {
     outline: none;
 }
 
-#search-input:focus {
+#search-input:focus, #research-input:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(49, 87, 213, 0.1);
 }
@@ -266,7 +266,7 @@ a:hover {
         grid-template-columns: 1fr;
     }
 
-    #search-form {
+    #search-form, #research-form {
         flex-direction: column;
     }
 
@@ -274,3 +274,7 @@ a:hover {
         width: 100%;
     }
 }
+
+#research-form { flex-wrap: wrap; }
+#research-form label { flex-basis: 100%; }
+#research-result p { overflow-wrap: anywhere; }

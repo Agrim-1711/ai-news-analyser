@@ -20,6 +20,19 @@
     <main class="container">
 
         <section>
+            <h2>Research a question</h2>
+            <p>Explore news with cited findings based on article titles and descriptions.</p>
+            <form id="research-form">
+                <label for="research-input">Your question</label>
+                <input id="research-input" type="text" minlength="3" maxlength="1000"
+                    placeholder="What are the recent developments affecting Nvidia?" required>
+                <button type="submit">Research</button>
+            </form>
+            <p id="research-status" class="status" role="status" aria-live="polite"></p>
+            <div id="research-result"></div>
+        </section>
+
+        <section>
             <h2>Search news</h2>
 
             <form id="search-form">

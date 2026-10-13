@@ -7,6 +7,7 @@ A small full-stack application for searching recent news articles and using AI t
 ## Features
 
 - Search for recent news articles by topic
+- Research a news question using LLM-selected searches and cited findings
 - View article metadata including title, source, publication date and description
 - Generate an AI summary and sentiment classification for an article
 - Persist completed analyses in a PostgreSQL database
@@ -146,6 +147,20 @@ Returns recent previously generated analyses.
 ### `GET /api/health`
 
 Basic application health check.
+
+### `POST /api/research`
+
+Accepts a `question` (3–1000 characters) and returns `findings`, cited `sources`,
+`limitations`, and executed `searches`. Each finding contains `text` and
+`source_ids`; source URLs are resolved by the backend from news results.
+
+The research agent can make up to three searches and has a 90-second overall
+timeout. It uses news titles/descriptions rather than full articles and does not
+persist research answers. Set optional `RESEARCH_MODEL` to override the default
+`gpt-4.1-nano`.
+
+Run offline regression checks with `python -m pytest -q`; tests supply dummy
+credentials and an in-memory SQLite database.
 
 ## Design Decisions and Trade-offs
 

@@ -1,12 +1,15 @@
+import asyncio
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from openai import OpenAIError
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import Base, engine, get_db
 from app.models import Analysis
-from app.schemas import ArticleInput
+from app.schemas import ArticleInput, ResearchRequest, ResearchResponse
+from app.services.research import ResearchError, research_question
 from app.services.ai import analyse_article
 from app.services.news import search_articles
 
@@ -18,6 +21,22 @@ from fastapi.templating import Jinja2Templates
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="NewsAnalyser")
+
+@app.post("/api/research", response_model=ResearchResponse)
+async def create_research(request: ResearchRequest):
+    question = request.question.strip()
+    if len(question) < 3:
+        raise HTTPException(status_code=422, detail="Please enter a research question")
+    try:
+        return await research_question(question)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Research timed out. Please try again")
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502, detail="News provider returned an error")
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Unable to reach news provider")
+    except (OpenAIError, ResearchError, ValidationError):
+        raise HTTPException(status_code=502, detail="Unable to produce a reliable research answer")
 
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

@@ -4,6 +4,57 @@ const searchStatus = document.getElementById("search-status");
 const searchResults = document.getElementById("search-results");
 const analysisHistory = document.getElementById("analysis-history");
 
+const researchForm = document.getElementById("research-form");
+researchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const question = document.getElementById("research-input").value.trim();
+    if (question.length < 3) return;
+    const button = researchForm.querySelector("button");
+    const status = document.getElementById("research-status");
+    const result = document.getElementById("research-result");
+    button.disabled = true;
+    status.textContent = "Researching news sources…";
+    result.replaceChildren();
+    try {
+        const response = await fetch("/api/research", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({question}),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Research failed");
+        const sources = new Map(data.sources.map(source => [source.id, source]));
+        for (const finding of data.findings) {
+            const paragraph = document.createElement("p");
+            paragraph.textContent = finding.text + " ";
+            for (const id of finding.source_ids) {
+                const source = sources.get(id);
+                if (!source) continue;
+                const link = document.createElement("a");
+                link.href = source.url;
+                link.textContent = `[${id}] `;
+                link.title = `${source.title} — ${source.source || "Unknown source"}`;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                paragraph.appendChild(link);
+            }
+            result.appendChild(paragraph);
+        }
+        const limitations = document.createElement("p");
+        limitations.className = "status";
+        limitations.textContent = data.limitations;
+        result.appendChild(limitations);
+        const searches = document.createElement("p");
+        searches.className = "status";
+        searches.textContent = "Searches used: " + data.searches.join(" → ");
+        result.appendChild(searches);
+        status.textContent = data.findings.length ? "Research complete." : "Insufficient evidence.";
+    } catch (error) {
+        status.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+});
+
 
 searchForm.addEventListener("submit", async (event) => {
     event.preventDefault();
