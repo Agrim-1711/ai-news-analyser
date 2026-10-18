@@ -2,7 +2,10 @@
 import re
 from difflib import SequenceMatcher
 
-from app.schemas import ClaimSupport, CorroborationReview, ResearchDraft, ResearchResultFinding
+from app.schemas import (
+    ClaimSupport, CorroborationReview, ResearchDraft, ResearchEvidence,
+    ResearchResultFinding, SharedOriginEvidence,
+)
 from app.services.evidence import align_evidence_fields, expand_description_excerpts, validate_evidence
 from app.services.quality import AnswerQualityError, validate_synthesis
 
@@ -26,7 +29,10 @@ def _attribution_quote(quote, origin_name, sources, publisher_origin):
     available = " ".join((getattr(source, quote.field) or "").split())
     if not excerpt or excerpt not in available:
         return False
-    name = re.escape(origin_name.strip())
+    plain_name = origin_name.strip()
+    # Publisher metadata often includes "The" while a report's attribution omits it.
+    name = (r"(?:the\s+)?" + re.escape(plain_name[4:])
+            if plain_name.casefold().startswith("the ") else re.escape(plain_name))
     # A company 'saying' the same thing is agreement, not proof that outlets
     # reused a report. Require a report/release attribution or a wire byline.
     patterns = [
@@ -36,6 +42,7 @@ def _attribution_quote(quote, origin_name, sources, publisher_origin):
     ]
     if publisher_origin:
         patterns.append(rf"\b(?:according to|reported by|via|reprinted from|republished from|syndicated by)\s+{name}\b")
+        patterns.append(rf"\b{name}\s+(?:(?:newspaper|news agency)\s+)?(?:reported|reports)\b")
     for pattern in patterns:
         for match in re.finditer(pattern, excerpt, flags=re.IGNORECASE):
             before = excerpt[max(0, match.start() - 70):match.start()]
@@ -50,6 +57,28 @@ def _attribution_quote(quote, origin_name, sources, publisher_origin):
 def _validated_origins(assessments, sources):
     """Ignore unsupported origin guesses without discarding valid claim evidence."""
     relations = [item.model_copy(deep=True) for item in assessments]
+    # Explicit attribution to another assessed publisher does not depend on the
+    # model volunteering an origin link. Keep the actual retrieved passage as proof.
+    for item in relations:
+        for other in relations:
+            if item.source_id == other.source_id:
+                continue
+            publisher = sources[other.source_id].source
+            if not publisher or len(_normalise(publisher)) < 3:
+                continue
+            source = sources[item.source_id]
+            for field in ("title", "description"):
+                text = getattr(source, field)
+                if not text or not text.strip():
+                    continue
+                quote = ResearchEvidence(source_id=item.source_id, field=field, excerpt=text)
+                if _attribution_quote(quote, publisher, sources, publisher_origin=True):
+                    if other.source_id not in item.shared_origin_with:
+                        item.shared_origin_with.append(other.source_id)
+                    item.origin_evidence.append(SharedOriginEvidence(
+                        other_source_id=other.source_id, origin_name=publisher, evidence=[quote],
+                    ))
+                    break
     notes = {}
     for item in relations:
         accepted, clues = [], []

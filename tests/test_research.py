@@ -14,6 +14,7 @@ from app.schemas import (
     CorroborationReview, ResearchDraft, ResearchFinding, ResearchEvidence, SourceReview, SourceAssessment,
 )
 from app.services import research
+from app.services.corroboration_contract import CompactCorroborationReview
 from evaluations.cases import CASES
 
 ARTICLE = {
@@ -32,6 +33,31 @@ def response(*items, status="completed"):
     return SimpleNamespace(output=list(items), status=status)
 
 
+def compact_fixture(review, data):
+    """Adapt curated public-format answers to the new model-only fixture format."""
+    passages = {source["source_id"]: source["evidence"] for source in data["sources"]}
+    def refs(quotes):
+        ids = []
+        for quote in quotes:
+            matches = [p["id"] for p in passages.get(quote.source_id, [])
+                       if p["field"] == quote.field
+                       and " ".join(quote.excerpt.split()) in " ".join(p["text"].split())]
+            ids.append(matches[0] if matches else "UNKNOWN_EVIDENCE")
+        return ids
+    values = []
+    for item in review.assessments:
+        value = item.model_dump(exclude={"sources"})
+        value["sources"] = [dict(source_id=r.source_id, stance=r.stance,
+                                  explanation=r.explanation, evidence_ids=refs(r.evidence))
+                            for r in item.sources]
+        value["origins"] = [dict(source_id=r.source_id, other_source_id=clue.other_source_id,
+                                  origin_name=clue.origin_name, evidence_ids=refs(clue.evidence))
+                            for r in item.sources for clue in r.origin_evidence]
+        values.append(value)
+    return CompactCorroborationReview(assessments=values,
+        follow_up_query=review.follow_up_query, follow_up_reason=review.follow_up_reason)
+
+
 def setup_agent(monkeypatch, turns, articles=None, draft=None):
     responses = SimpleNamespace(
         create=AsyncMock(side_effect=turns),
@@ -48,13 +74,14 @@ def setup_agent(monkeypatch, turns, articles=None, draft=None):
 
     async def default_corroboration(**kwargs):
         data = json.loads(kwargs["input"][0]["content"])
-        return SimpleNamespace(status="completed", output_parsed=CorroborationReview(
+        source_map = {s["source_id"]: s for s in data["sources"]}
+        return SimpleNamespace(status="completed", output_parsed=CompactCorroborationReview(
             assessments=[{
                 "finding_index": finding["finding_index"], "revised_text": finding["text"],
                 "assessed_claim": finding["text"],
                 "evidence_status": finding["evidence_status"], "explanation": "Fixture support review.",
                 "sources": [{"source_id": sid, "stance": "supports", "explanation": "Fixture support.",
-                             "evidence": [item for item in finding["evidence"] if item["source_id"] == sid]}
+                             "evidence_ids": [key for key in finding["evidence_ids"] if key.startswith(sid + ":")]}
                             for sid in finding["source_ids"]],
             } for finding in data["candidate_findings"]],
         ))
@@ -64,8 +91,12 @@ def setup_agent(monkeypatch, turns, articles=None, draft=None):
     async def parse_dispatch(**kwargs):
         if kwargs["text_format"] is SourceReview:
             return await responses.review(**kwargs)
-        if kwargs["text_format"] is CorroborationReview:
-            return await responses.corroborate(**kwargs)
+        if kwargs["text_format"] is CompactCorroborationReview:
+            result = await responses.corroborate(**kwargs)
+            if isinstance(result.output_parsed, CorroborationReview):
+                result = SimpleNamespace(status=result.status, output_parsed=compact_fixture(
+                    result.output_parsed, json.loads(kwargs["input"][0]["content"])))
+            return result
         return await responses.parse(**kwargs)
 
     wire = SimpleNamespace(create=responses.create, parse=parse_dispatch)
@@ -707,7 +738,7 @@ def test_real_sdk_protocol_with_simulated_http(monkeypatch):
             output = [{"id": "msg_review", "type": "message", "role": "assistant",
                        "status": "completed", "content": [{"type": "output_text",
                        "text": review.model_dump_json(), "annotations": []}]}]
-        elif body.get("text", {}).get("format", {}).get("name") == "CorroborationReview":
+        elif body.get("text", {}).get("format", {}).get("name") == "CompactCorroborationReview":
             review = CorroborationReview(assessments=[{
                 "finding_index": 0, "revised_text": "Nvidia announced a new chip.",
                 "assessed_claim": "Nvidia announced a new chip.",
@@ -715,6 +746,7 @@ def test_real_sdk_protocol_with_simulated_http(monkeypatch):
                 "sources": [{"source_id": "S1", "stance": "supports", "explanation": "Chip announcement.",
                              "evidence": [answer().findings[0].evidence[0]]}],
             }])
+            review = compact_fixture(review, json.loads(body["input"][0]["content"]))
             output = [{"id": "msg_corrob", "type": "message", "role": "assistant",
                        "status": "completed", "content": [{"type": "output_text",
                        "text": review.model_dump_json(), "annotations": []}]}]
@@ -746,7 +778,7 @@ def test_real_sdk_protocol_with_simulated_http(monkeypatch):
     assert requests[2]["text"]["format"]["name"] == "SourceReview"
     assert requests[3]["text"]["format"]["name"] == "ResearchDraft"
     assert "tools" not in requests[3]
-    assert requests[4]["text"]["format"]["name"] == "CorroborationReview"
+    assert requests[4]["text"]["format"]["name"] == "CompactCorroborationReview"
     assert "tools" not in requests[4]
     assert result.findings[0].corroboration.status == "single_source_reporting"
 
@@ -861,3 +893,21 @@ def test_core_timeout_has_stage_and_never_returns_unchecked_answer(monkeypatch, 
     assert stage + " model_request_timeout" in caplog.text
     assert "PRIVATE_QUESTION" not in caplog.text
     responses.corroborate.assert_not_awaited()
+
+
+def test_corrob_requests_are_bounded_without_discarding_source_pool(monkeypatch):
+    draft = answer()
+    for i in range(1, 8):
+        item = draft.findings[0].model_copy(deep=True)
+        item.text = f'Attributed development number {i}.'
+        draft.findings.append(item)
+    responses, _ = setup_agent(monkeypatch, [response(call()), response()], draft=draft)
+    result = run()
+    assert len(result.findings) == 5
+    assert 'limited to five' in result.limitations
+    request = responses.corroborate.call_args.kwargs
+    data = json.loads(request['input'][0]['content'])
+    assert len(data['candidate_findings']) == 5
+    assert request['max_output_tokens'] == 4500
+    assert all('evidence' not in f for f in data['candidate_findings'])
+    assert data['sources'][0]['evidence'][1]['text'] == ARTICLE['description']

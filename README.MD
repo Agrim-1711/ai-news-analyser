@@ -204,6 +204,25 @@ A failed optional news follow-up or second model review preserves the prior vali
 review and adds a limitation. Extra model reviews can increase latency and API cost even though the
 news search budget is unchanged. No label means independently verified or proven true.
 
+Corroboration uses a compact internal model schema: the model selects IDs for
+server-held title/description passages instead of copying quotes into each source
+relationship. The backend resolves IDs only against the current request, rejects
+unknown/cross-source/duplicate references, restores exact source text, then runs the
+existing claim, quote, scope and origin checks. Validated draft passages are also
+available by ID, avoiding a forced expansion to an entire long description.
+Origin attribution links are supplied once per pair rather than repeated per source.
+Explicit attribution to another assessed publisher is also detected from the retrieved
+text even if the model omits an origin link (for example, Telegraph newspaper reported).
+The exact attribution passage is retained as evidence; mere mentions and common negated
+attribution phrases do not cause grouping. This remains a conservative heuristic.
+
+At most five candidate findings are reviewed, with brief explanations and a 4,500-token
+corroboration output limit (previously 6,500). If a draft exceeds five findings, the
+omission is disclosed. The full eligible source pool is retained, including reprints
+and potentially challenging accounts. Original citations must still be accounted for.
+The public API and frontend support/citation format are unchanged. Smaller output
+reduces transcription work; it does not guarantee latency or semantic correctness.
+
 Five synthetic corroboration cases cover multiple reports, shared copies, conflict,
 different scopes and single-source reporting. Run reference checks without API calls:
 

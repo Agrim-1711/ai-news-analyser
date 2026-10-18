@@ -285,3 +285,44 @@ def test_every_finding_must_be_assessed_once(indexes):
     checked.assessments = [checked.assessments[0].model_copy(update={"finding_index": i}) for i in indexes]
     with pytest.raises(AnswerQualityError, match="every finding"):
         apply_corroboration(candidate(sources), checked, sources)
+
+
+def test_explicit_telegraph_reprints_group_even_without_model_origin_links():
+    sources = {
+        'S1': source('S1', "Oct 18 (Reuters) - Microsoft pulled out of a UK data center deal with Nscale, Britain's Telegraph newspaper reported on Sunday.", 'The Star'),
+        'S2': source('S2', "Microsoft has pulled out of a data center deal with British cloud provider Nscale, Britain's Telegraph newspaper reported on Sunday. The US tech giant was a customer.", 'MarketScreener'),
+        'S3': source('S3', 'US tech giant pulls the plug on Nscale deal in threat to multibillion-dollar listing', 'The Telegraph'),
+    }
+    assessed = review(*(relation(s) for s in sources.values()))
+    result = apply_corroboration(candidate(sources), assessed, sources)[0]
+    assert result.corroboration.status == 'single_source_reporting'
+    assert result.corroboration.supporting_groups == [['S1', 'S2', 'S3']]
+    assert result.corroboration.possible_shared_origin is True
+    assert all('The Telegraph' in note for note in result.corroboration.grouping_notes)
+    assert assessed.assessments[0].sources[0].origin_evidence == []
+
+
+@pytest.mark.parametrize('text', [
+    'According to The Telegraph, Acme cancelled Orion.',
+    'Telegraph newspaper reported that Acme cancelled Orion.',
+    'The Telegraph reports that Acme cancelled Orion.',
+])
+def test_explicit_named_publisher_attribution_requires_no_model_guess(text):
+    sources = {'S1': source('S1', text, 'Second Publisher'),
+               'S2': source('S2', 'The Orion agreement was cancelled.', 'The Telegraph')}
+    finding = apply_corroboration(candidate(sources), review(*(relation(s) for s in sources.values())), sources)[0]
+    assert finding.corroboration.status == 'single_source_reporting'
+    assert finding.corroboration.possible_shared_origin is True
+
+
+@pytest.mark.parametrize('text', [
+    'Acme said it cancelled Orion. The Telegraph covers this company.',
+    'This is not according to The Telegraph; Acme cancelled Orion.',
+    'No Telegraph newspaper reported that Acme cancelled Orion.',
+])
+def test_mention_or_negated_attribution_does_not_merge_publisher_groups(text):
+    sources = {'S1': source('S1', text, 'Second Publisher'),
+               'S2': source('S2', 'The Orion agreement was cancelled.', 'The Telegraph')}
+    finding = apply_corroboration(candidate(sources), review(*(relation(s) for s in sources.values())), sources)[0]
+    assert finding.corroboration.status == 'multiple_source_support'
+    assert finding.corroboration.possible_shared_origin is False
