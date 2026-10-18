@@ -1,7 +1,8 @@
 import asyncio
+import logging
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
-from openai import OpenAIError
+from openai import APITimeoutError, OpenAIError, RateLimitError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="NewsAnalyser")
+logger = logging.getLogger(__name__)
 
 @app.post("/api/research", response_model=ResearchResponse)
 async def create_research(request: ResearchRequest):
@@ -30,12 +32,24 @@ async def create_research(request: ResearchRequest):
     try:
         return await research_question(question)
     except asyncio.TimeoutError:
+        logger.warning("Research failed: overall_timeout")
         raise HTTPException(status_code=504, detail="Research timed out. Please try again")
+    except APITimeoutError:
+        logger.warning("Research failed: model_request_timeout")
+        raise HTTPException(status_code=504, detail="The AI service timed out. Please try again")
+    except RateLimitError:
+        logger.warning("Research failed: model_rate_limited")
+        raise HTTPException(status_code=503, detail="The AI service is busy or its usage limit was reached. Please try again later")
     except httpx.HTTPStatusError:
         raise HTTPException(status_code=502, detail="News provider returned an error")
     except httpx.RequestError:
         raise HTTPException(status_code=503, detail="Unable to reach news provider")
-    except (OpenAIError, ResearchError, ValidationError):
+    except ResearchError as exc:
+        logger.warning("Research failed: %s", exc.code)
+        raise HTTPException(status_code=502, detail="Unable to produce a reliable research answer")
+    except (OpenAIError, ValidationError) as exc:
+        # Never log exception text: provider errors can contain request data.
+        logger.warning("Research failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Unable to produce a reliable research answer")
 
 
@@ -122,6 +136,6 @@ def get_analyses(db: Session = Depends(get_db)):
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse(
-        "index.html",
-        {"request": request},
+        request=request,
+        name="index.html",
     )

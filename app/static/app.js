@@ -4,6 +4,19 @@ const searchStatus = document.getElementById("search-status");
 const searchResults = document.getElementById("search-results");
 const analysisHistory = document.getElementById("analysis-history");
 
+function appendResearchQuote(parent, evidence, source, prefix = "") {
+    const quote = document.createElement("blockquote");
+    const text = document.createElement("p");
+    text.textContent = evidence.excerpt;
+    const attribution = document.createElement("cite");
+    attribution.textContent = `${prefix}[${evidence.source_id}] ${source.title}`
+        + ` — ${source.source || "Unknown source"}`
+        + (source.published_at ? ` · ${formatDate(source.published_at)}` : "")
+        + ` (${evidence.field})`;
+    quote.append(text, attribution);
+    parent.appendChild(quote);
+}
+
 const researchForm = document.getElementById("research-form");
 researchForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -23,7 +36,63 @@ researchForm.addEventListener("submit", async (event) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "Research failed");
         const sources = new Map(data.sources.map(source => [source.id, source]));
+        if (data.coverage) {
+            const coverage = document.createElement("p");
+            coverage.className = "status";
+            coverage.textContent = `Reviewed ${data.coverage.retrieved_articles} retrieved articles; `
+                + `cited ${data.coverage.cited_articles} from ${data.coverage.publisher_count} publishers. `
+                + "This is a selected overview, not complete coverage.";
+            result.appendChild(coverage);
+        }
         for (const finding of data.findings) {
+            const card = document.createElement("article");
+            card.className = "research-finding";
+            const label = document.createElement("p");
+            label.className = "evidence-status";
+            label.textContent = "Evidence status (AI-assessed): " + finding.evidence_status;
+            card.appendChild(label);
+            const support = finding.corroboration;
+            if (support) {
+                const supportLabel = document.createElement("p");
+                supportLabel.className = "support-status";
+                supportLabel.dataset.status = support.status;
+                const names = {
+                    single_source_reporting: "Single-source reporting",
+                    multiple_source_support: "Multiple-source support",
+                    conflicting_reports: "Conflicting reports",
+                };
+                supportLabel.textContent = "Support (AI-assessed): " + names[support.status];
+                card.appendChild(supportLabel);
+                const counts = document.createElement("p");
+                counts.className = "status support-counts";
+                const supportingCount = support.supporting_source_ids.length;
+                const groupCount = support.supporting_groups.length;
+                const challengingCount = support.challenging_source_ids.length;
+                const contextCount = support.context_source_ids.length;
+                counts.textContent = `${supportingCount} supporting ${supportingCount === 1 ? "article" : "articles"} in `
+                    + `${groupCount} ${groupCount === 1 ? "source group" : "source groups"}`
+                    + (support.challenging_source_ids.length
+                        ? `; ${challengingCount} challenging ${challengingCount === 1 ? "article" : "articles"}.` : ".")
+                    + (contextCount ? ` ${contextCount} additional ${contextCount === 1 ? "article provides" : "articles provide"} context.` : "")
+                    + (support.possible_shared_origin ? " Possible shared origin." : "");
+                if (support.supporting_source_ids.length + support.challenging_source_ids.length
+                    + support.context_source_ids.length > 1) {
+                    counts.textContent += " Independence unknown.";
+                }
+                card.appendChild(counts);
+                if (support.conflict_explanation) {
+                    const conflict = document.createElement("p");
+                    conflict.className = "conflict-explanation";
+                    conflict.textContent = support.conflict_explanation;
+                    card.appendChild(conflict);
+                }
+            }
+            if (!support) {
+                const unchecked = document.createElement("p");
+                unchecked.className = "status";
+                unchecked.textContent = "Support: not assessed — the additional source-support review could not be completed.";
+                card.appendChild(unchecked);
+            }
             const paragraph = document.createElement("p");
             paragraph.textContent = finding.text + " ";
             for (const id of finding.source_ids) {
@@ -37,7 +106,76 @@ researchForm.addEventListener("submit", async (event) => {
                 link.rel = "noopener noreferrer";
                 paragraph.appendChild(link);
             }
-            result.appendChild(paragraph);
+            card.appendChild(paragraph);
+            const details = document.createElement("details");
+            details.className = "research-evidence";
+            const summary = document.createElement("summary");
+            summary.textContent = "Show evidence";
+            details.appendChild(summary);
+            details.addEventListener("toggle", () => {
+                summary.textContent = details.open ? "Hide evidence" : "Show evidence";
+            });
+            if (support) {
+                const assessedClaim = document.createElement("p");
+                assessedClaim.textContent = "Claim assessed: " + support.assessed_claim;
+                details.appendChild(assessedClaim);
+                const explanation = document.createElement("p");
+                explanation.textContent = support.explanation
+                    + " Reports from the same publisher or website, near copies, and reports with a possible common origin are grouped together. Different groups do not establish independence.";
+                details.appendChild(explanation);
+                for (const note of support.grouping_notes || []) {
+                    const grouping = document.createElement("p");
+                    grouping.textContent = note;
+                    details.appendChild(grouping);
+                }
+            }
+            const relations = new Map((support?.source_assessments || []).map(item => [item.source_id, item]));
+            const explained = new Set();
+            for (const evidence of finding.evidence) {
+                const source = sources.get(evidence.source_id);
+                const relationship = relations.get(evidence.source_id);
+                if (relationship && !explained.has(evidence.source_id)) {
+                    const explanation = document.createElement("p");
+                    explanation.className = "source-relationship";
+                    explanation.textContent = `[${evidence.source_id}] `
+                        + ({supports: "Supports: ", challenges: "Challenges: ", context: "Context: "}[relationship.stance])
+                        + relationship.explanation
+                        + (relationship.origin_reason ? " Possible shared origin: " + relationship.origin_reason : "");
+                    details.appendChild(explanation);
+                    explained.add(evidence.source_id);
+                }
+                appendResearchQuote(details, evidence, source);
+            }
+            const shownOrigins = new Set();
+            const normaliseQuote = text => text.replace(/\s+/g, " ").trim();
+            for (const relationship of relations.values()) {
+                for (const clue of relationship.origin_evidence || []) {
+                    for (const evidence of clue.evidence) {
+                        const key = JSON.stringify([evidence.source_id, evidence.field, normaliseQuote(evidence.excerpt)]);
+                        const alreadyShown = finding.evidence.some(item => item.source_id === evidence.source_id
+                            && item.field === evidence.field
+                            && normaliseQuote(item.excerpt).includes(normaliseQuote(evidence.excerpt)));
+                        if (alreadyShown || shownOrigins.has(key)) continue;
+                        const source = sources.get(evidence.source_id);
+                        if (!source) continue;
+                        if (!shownOrigins.size) {
+                            const heading = document.createElement("p");
+                            heading.textContent = "Shared-origin attribution";
+                            details.appendChild(heading);
+                        }
+                        appendResearchQuote(details, evidence, source, "Attribution ");
+                        shownOrigins.add(key);
+                    }
+                }
+            }
+            card.appendChild(details);
+            result.appendChild(card);
+        }
+        if (data.findings.length) {
+            const note = document.createElement("p");
+            note.className = "status";
+            note.textContent = "Quotes match retrieved source text. Claim support and evidence status still need checking.";
+            result.appendChild(note);
         }
         const limitations = document.createElement("p");
         limitations.className = "status";
@@ -47,7 +185,10 @@ researchForm.addEventListener("submit", async (event) => {
         searches.className = "status";
         searches.textContent = "Searches used: " + data.searches.join(" → ");
         result.appendChild(searches);
-        status.textContent = data.findings.length ? "Research complete." : "Insufficient evidence.";
+        status.textContent = data.findings.length
+            ? (data.findings.some(finding => !finding.corroboration)
+                ? "Research returned with limitations: source support was not assessed." : "Research complete.")
+            : "Insufficient evidence.";
     } catch (error) {
         status.textContent = error.message;
     } finally {

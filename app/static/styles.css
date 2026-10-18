@@ -278,3 +278,53 @@ a:hover {
 #research-form { flex-wrap: wrap; }
 #research-form label { flex-basis: 100%; }
 #research-result p { overflow-wrap: anywhere; }
+
+.research-finding {
+    margin: 18px 0;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.research-finding .evidence-status {
+    margin-top: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.research-finding blockquote {
+    margin: 16px 0 0;
+    padding: 0 0 0 14px;
+    border-left: 3px solid var(--primary);
+    overflow-wrap: anywhere;
+}
+
+.research-finding blockquote p { white-space: pre-wrap; }
+.research-finding cite { color: var(--muted); font-size: 0.85rem; }
+
+.research-evidence summary {
+    color: var(--primary);
+    cursor: pointer;
+    width: fit-content;
+    padding: 6px 0;
+    font-weight: 600;
+}
+
+.research-evidence summary:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 4px;
+    border-radius: 2px;
+}
+
+.research-finding .support-status {
+    font-weight: 600;
+    margin: 8px 0;
+}
+
+.research-finding .support-counts { font-size: 0.85rem; }
+
+.research-finding .support-status[data-status="conflicting_reports"],
+.research-finding .conflict-explanation { color: #9a3412; }
+
+.research-finding .source-relationship { font-size: 0.9rem; }
